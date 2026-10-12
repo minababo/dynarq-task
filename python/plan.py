@@ -10,6 +10,35 @@ The rules are yours to build.
 
 import argparse
 import json
+import math
+import re
+from datetime import date
+
+DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # not \d: it also matches non-ASCII digits
+
+
+def parse_date(value):
+    """Return a date if value is a real date written exactly as YYYY-MM-DD, else None.
+
+    The pattern check comes first because date.fromisoformat also accepts other
+    forms (for example "20261012"), which the rules do not allow.
+    """
+    if not isinstance(value, str) or not DATE_PATTERN.fullmatch(value):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:  # right shape, impossible date such as 2026-02-30
+        return None
+
+
+def is_valid_amount(value):
+    """True if value is a finite JSON number greater than 0.
+
+    bool is excluded on purpose: in Python True is an int, but in JSON it is not a number.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return math.isfinite(value) and value > 0
 
 
 def build_plan(invoices, sent, today):
