@@ -16,6 +16,14 @@ from datetime import date
 
 DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # not \d: it also matches non-ASCII digits
 
+# (step, minimum days overdue, needs approval), lowest step first.
+STEPS = [
+    ("friendly", 3, False),
+    ("firm", 10, True),
+    ("final", 24, True),
+]
+STEP_RANK = {name: rank for rank, (name, _, _) in enumerate(STEPS)}
+
 
 def parse_date(value):
     """Return a date if value is a real date written exactly as YYYY-MM-DD, else None.
@@ -77,6 +85,52 @@ def find_duplicate_ids(invoices):
     return duplicates
 
 
+def highest_sent_ranks(sent):
+    """Map invoice id -> rank of the highest step already sent. Unknown steps are ignored."""
+    ranks = {}
+    for entry in sent:
+        if not isinstance(entry, dict):
+            continue
+        rank = STEP_RANK.get(entry.get("step"))
+        if rank is None:
+            continue
+        invoice_id = entry.get("invoice_id")
+        ranks[invoice_id] = max(rank, ranks.get(invoice_id, -1))
+    return ranks
+
+
+def reached_step(days_overdue):
+    """Return (step, needs_approval) for the highest step reached, or None if none is."""
+    reached = None
+    for name, min_days, needs_approval in STEPS:
+        if days_overdue >= min_days:
+            reached = (name, needs_approval)
+    return reached
+
+
+def plan_action(invoice, today, sent_ranks):
+    """Return the action for one invoice with valid data, or None if nothing is due today."""
+    if invoice.get("paid_date") is not None:
+        return None  # paid on or before today (already validated), even if reminders were sent
+
+    days_overdue = (today - parse_date(invoice["due_date"])).days
+    reached = reached_step(days_overdue)
+    if reached is None:
+        return None  # not yet: fewer than 3 days overdue
+
+    step, needs_approval = reached
+    if sent_ranks.get(invoice["id"], -1) >= STEP_RANK[step]:
+        return None  # this step or a higher one was already sent
+
+    return {
+        "invoice_id": invoice["id"],
+        "step": step,
+        "needs_approval": needs_approval,
+        "days_overdue": days_overdue,
+        "message": "",  # TODO part 3: reminder text
+    }
+
+
 def build_plan(invoices, sent, today):
     """Return the plan for `today` as a dict with the keys today, actions and skipped.
 
@@ -92,6 +146,7 @@ def build_plan(invoices, sent, today):
     # Each duplicate id is listed once, however many invoices share it.
     skipped = [{"invoice_id": invoice_id, "reason": "duplicate_id"} for invoice_id in duplicates]
     actions = []
+    sent_ranks = highest_sent_ranks(sent)
 
     for invoice in invoices:
         if invoice["id"] in duplicates:
@@ -100,7 +155,9 @@ def build_plan(invoices, sent, today):
         if reason is not None:
             skipped.append({"invoice_id": invoice["id"], "reason": reason})
             continue
-        # TODO (next step): paid / not yet / one action at most.
+        action = plan_action(invoice, today_date, sent_ranks)
+        if action is not None:
+            actions.append(action)
 
     # Plain text order, character by character: INV-100 comes before INV-99.
     actions.sort(key=lambda item: item["invoice_id"])
