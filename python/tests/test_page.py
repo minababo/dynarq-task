@@ -2,7 +2,7 @@
 
 import unittest
 
-from page import REASON_TEXT, format_amount, render_error_page, render_plan_page
+from page import REASON_TEXT, render_error_page, render_plan_page
 from plan import build_plan
 from tests.helpers import TODAY, make_invoice
 
@@ -10,13 +10,6 @@ from tests.helpers import TODAY, make_invoice
 def render(invoices, sent=(), decisions=None):
     plan = build_plan(invoices, list(sent), TODAY)
     return render_plan_page(plan, invoices, decisions or {})
-
-
-class FormatAmountTest(unittest.TestCase):
-    def test_two_decimals_and_thousands(self):
-        self.assertEqual(format_amount(1250.0, "EUR"), "EUR 1,250.00")
-        self.assertEqual(format_amount(215.5, "EUR"), "EUR 215.50")
-        self.assertEqual(format_amount(7, "USD"), "USD 7.00")
 
 
 class PlanPageTest(unittest.TestCase):

@@ -14,6 +14,8 @@ import re
 import sys
 from datetime import date
 
+from messages import build_message
+
 DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # not \d: it also matches non-ASCII digits
 
 # (step, minimum days overdue, needs approval), lowest step first.
@@ -127,7 +129,7 @@ def plan_action(invoice, today, sent_ranks):
         "step": step,
         "needs_approval": needs_approval,
         "days_overdue": days_overdue,
-        "message": "",  # TODO part 3: reminder text
+        "message": build_message(invoice, step, days_overdue),
     }
 
 
