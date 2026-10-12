@@ -6,6 +6,8 @@ name such as "<script>" must show as text, not run.
 
 from html import escape
 
+from messages import format_amount
+
 STEP_LABELS = {
     "friendly": "Friendly reminder",
     "firm": "Firm reminder",
@@ -55,11 +57,6 @@ summary { cursor: pointer; color: var(--accent); min-height: 44px; display: flex
   border-radius: 8px; padding: 16px; }
 .notice.error { border-left-color: var(--warn); }
 """
-
-
-def format_amount(amount, currency):
-    """Format as e.g. 'EUR 1,250.00'."""
-    return f"{currency} {amount:,.2f}"
 
 
 def _page(title, body):
