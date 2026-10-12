@@ -41,7 +41,7 @@ p { margin: 0.25rem 0 0.75rem; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
 .message { white-space: pre-wrap; background: var(--bg); border-radius: 6px; padding: 12px;
   margin: 0.5rem 0 0; font: inherit; overflow-wrap: anywhere; }
-.status { font-weight: 600; }
+.status { font-weight: 600; flex-basis: 100%; }  /* own line, so the buttons stay together */
 .status.approved { color: var(--ok); }
 .status.rejected { color: var(--warn); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 0.75rem; }
