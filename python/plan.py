@@ -4,14 +4,14 @@ Run from inside python/:
 
     python plan.py --invoices ../data/invoices.json --sent ../data/sent.json --today 2026-10-12 --out ../actions.json
 
-This starter only reads the files and writes an empty plan in the required shape.
-The rules are yours to build.
+Exit codes: 0 plan written, 1 an input or output file cannot be used, 2 bad arguments.
 """
 
 import argparse
 import json
 import math
 import re
+import sys
 from datetime import date
 
 DATE_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")  # not \d: it also matches non-ASCII digits
@@ -165,27 +165,72 @@ def build_plan(invoices, sent, today):
     return {"today": today, "actions": actions, "skipped": skipped}
 
 
+class InputError(Exception):
+    """An input file cannot be used. The message is written for the person running the tool."""
+
+
 def read_json(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except OSError as error:
+        raise InputError(f"cannot read {path}: {error.strerror or error}") from error
+    except UnicodeDecodeError as error:
+        raise InputError(f"cannot read {path}: the file is not UTF-8 text") from error
+    except json.JSONDecodeError as error:
+        raise InputError(f"{path} is not valid JSON (line {error.lineno}, column {error.colno})") from error
 
 
-def main():
+def load_inputs(invoices_path, sent_path):
+    """Read and shape-check both files. Returns (invoices, sent) or raises InputError.
+
+    Only the file structure is checked here. Bad values inside an invoice are not
+    errors: build_plan reports them as skipped.
+    """
+    invoices = read_json(invoices_path)
+    if not isinstance(invoices, list):
+        raise InputError(f"{invoices_path} must contain a JSON list of invoices")
+    for position, invoice in enumerate(invoices, start=1):
+        if not isinstance(invoice, dict) or not isinstance(invoice.get("id"), str):
+            raise InputError(f"{invoices_path}: invoice number {position} has no text id")
+
+    sent = read_json(sent_path)
+    if not isinstance(sent, list):
+        raise InputError(f"{sent_path} must contain a JSON list of sent reminders")
+    return invoices, sent
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description="Plan today's payment reminders.")
     parser.add_argument("--invoices", required=True, help="path to invoices.json")
     parser.add_argument("--sent", required=True, help="path to sent.json")
     parser.add_argument("--today", required=True, help="date as YYYY-MM-DD")
     parser.add_argument("--out", required=True, help="path to write the plan JSON")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    invoices = read_json(args.invoices)
-    sent = read_json(args.sent)
+    if parse_date(args.today) is None:
+        print(f"Error: --today must be a real date as YYYY-MM-DD, got {args.today!r}", file=sys.stderr)
+        return 2
+
+    try:
+        invoices, sent = load_inputs(args.invoices, args.sent)
+    except InputError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+
     plan = build_plan(invoices, sent, args.today)
 
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(plan, f, indent=2)
-        f.write("\n")
+    try:
+        with open(args.out, "w", encoding="utf-8") as f:
+            json.dump(plan, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+    except OSError as error:
+        print(f"Error: cannot write {args.out}: {error.strerror or error}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote {len(plan['actions'])} actions and {len(plan['skipped'])} skipped to {args.out}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
