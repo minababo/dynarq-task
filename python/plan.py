@@ -41,16 +41,71 @@ def is_valid_amount(value):
     return math.isfinite(value) and value > 0
 
 
+def bad_data_reason(invoice, today):
+    """Return the first bad-data reason for one invoice, or None if its data is usable.
+
+    Duplicate ids are checked separately, because they depend on the whole file.
+    """
+    if not is_valid_amount(invoice.get("amount")):
+        return "invalid_amount"
+
+    due_date = invoice.get("due_date")
+    if due_date is None or due_date == "":
+        return "missing_due_date"
+    if parse_date(due_date) is None:
+        return "invalid_due_date"
+
+    # A missing key or null means unpaid; anything else must be a real date, not in the future.
+    paid_date = invoice.get("paid_date")
+    if paid_date is not None:
+        paid = parse_date(paid_date)
+        if paid is None or paid > today:
+            return "invalid_paid_date"
+
+    return None
+
+
+def find_duplicate_ids(invoices):
+    """Return the set of ids that appear on more than one invoice."""
+    seen = set()
+    duplicates = set()
+    for invoice in invoices:
+        invoice_id = invoice["id"]
+        if invoice_id in seen:
+            duplicates.add(invoice_id)
+        seen.add(invoice_id)
+    return duplicates
+
+
 def build_plan(invoices, sent, today):
     """Return the plan for `today` as a dict with the keys today, actions and skipped.
 
     invoices: the list from invoices.json
     sent: the list from sent.json
-    today: a date string, YYYY-MM-DD
+    today: a date string, YYYY-MM-DD (raises ValueError if it is not a real date)
     """
-    # TODO: apply the rules in README.md part 1 and fill both lists,
-    # sorted by invoice id. Each action also needs a message (part 3).
-    return {"today": today, "actions": [], "skipped": []}
+    today_date = parse_date(today)
+    if today_date is None:
+        raise ValueError(f"today must be a real date as YYYY-MM-DD, got {today!r}")
+
+    duplicates = find_duplicate_ids(invoices)
+    # Each duplicate id is listed once, however many invoices share it.
+    skipped = [{"invoice_id": invoice_id, "reason": "duplicate_id"} for invoice_id in duplicates]
+    actions = []
+
+    for invoice in invoices:
+        if invoice["id"] in duplicates:
+            continue
+        reason = bad_data_reason(invoice, today_date)
+        if reason is not None:
+            skipped.append({"invoice_id": invoice["id"], "reason": reason})
+            continue
+        # TODO (next step): paid / not yet / one action at most.
+
+    # Plain text order, character by character: INV-100 comes before INV-99.
+    actions.sort(key=lambda item: item["invoice_id"])
+    skipped.sort(key=lambda item: item["invoice_id"])
+    return {"today": today, "actions": actions, "skipped": skipped}
 
 
 def read_json(path):
